@@ -70,7 +70,9 @@ async def async_setup_entry(
     for update in ALL_UPDATES:
         hass.data[update] = None
 
-    ble_device = bluetooth.async_ble_device_from_address(hass, address)
+    ble_device = bluetooth.async_ble_device_from_address(
+        hass, address, connectable=True
+    )
 
     if not ble_device:
         raise ConfigEntryNotReady(
@@ -86,7 +88,9 @@ async def async_setup_entry(
 
     async def _async_update_method():
         """Get data from Fresh Intellivent Sky."""
-        ble_device = bluetooth.async_ble_device_from_address(hass, address)
+        ble_device = bluetooth.async_ble_device_from_address(
+            hass, address, connectable=True
+        )
 
         if not ble_device:
             raise UpdateFailed(f"Unable to find device: {address}")
