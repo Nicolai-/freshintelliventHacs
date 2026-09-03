@@ -154,11 +154,7 @@ async def async_setup_entry(
                     try:
                         await client.disconnect()
                     except Exception as err:  # pylint: disable=broad-except
-                        _LOGGER.error(
-                            "Couldn't disconnect",
-                            address,
-                            err,
-                        )
+                        _LOGGER.error("Couldn't disconnect %s: %s", address, err)
 
                 if error is None:
                     entry_data[LAST_SUCCESSFUL_CLIENT] = client
