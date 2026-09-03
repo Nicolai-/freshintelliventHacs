@@ -1,7 +1,9 @@
 """The Fresh Intellivent Sky integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from datetime import timedelta
 
 from homeassistant.components import bluetooth
@@ -17,13 +19,16 @@ from .const import (
     BOOST_SETTINGS,
     BOOST_UPDATE,
     CONF_AUTH_KEY,
+    CONF_MAX_UPDATE_RETRIES,
     CONSTANT_SPEED_UPDATE,
+    DEFAULT_MAX_UPDATE_RETRIES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     HUMIDITY_MODE_UPDATE,
     LIGHT_AND_VOC_MODE_UPDATE,
     TIMEOUT,
     TIMER_MODE_UPDATE,
+    UPDATE_RETRY_DELAY,
 )
 from .fetch_and_update import FetchAndUpdate
 
@@ -80,6 +85,9 @@ async def async_setup_entry(
         )
 
     auth_key = entry.data.get(CONF_AUTH_KEY)
+    max_update_retries = max(
+        1, int(entry.options.get(CONF_MAX_UPDATE_RETRIES, DEFAULT_MAX_UPDATE_RETRIES))
+    )
 
     if not ble_device:
         raise ConfigEntryNotReady(
@@ -88,43 +96,74 @@ async def async_setup_entry(
 
     async def _async_update_method():
         """Get data from Fresh Intellivent Sky."""
-        ble_device = bluetooth.async_ble_device_from_address(
-            hass, address, connectable=True
-        )
+        last_error: UpdateFailed | None = None
+        started = time.monotonic()
+        scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-        if not ble_device:
-            raise UpdateFailed(f"Unable to find device: {address}")
-
-        client = FreshIntelliVent(ble_device=ble_device)
-
-        error = None
-
-        try:
-            await client.connect(timeout=TIMEOUT)
-            if auth_key is not None:
-                await client.authenticate(authentication_code=auth_key)
-            await client.fetch_sensor_data()
-            await client.fetch_device_information()
-
-            updates = FetchAndUpdate(hass=hass, client=client)
-            await updates.update_all()
-
-        except Exception as err:  # pylint: disable=broad-except
-            error = UpdateFailed(f"Unable to fetch data: {err}")
-
-        try:
-            await client.disconnect()
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.error(
-                "Couldn't disconnect",
-                address,
-                err,
+        for attempt in range(1, max_update_retries + 1):
+            ble_device = bluetooth.async_ble_device_from_address(
+                hass, address, connectable=True
             )
 
-        if error is not None:
-            raise error
+            if not ble_device:
+                last_error = UpdateFailed(f"Unable to find device: {address}")
+            else:
+                client = FreshIntelliVent(ble_device=ble_device)
+                error = None
 
-        return client
+                try:
+                    await client.connect(timeout=TIMEOUT)
+                    if auth_key is not None:
+                        await client.authenticate(authentication_code=auth_key)
+                    await client.fetch_sensor_data()
+                    await client.fetch_device_information()
+
+                    updates = FetchAndUpdate(hass=hass, client=client)
+                    await updates.update_all()
+                except Exception as err:  # pylint: disable=broad-except
+                    error = UpdateFailed(f"Unable to fetch data: {err}")
+                finally:
+                    try:
+                        await client.disconnect()
+                    except Exception as err:  # pylint: disable=broad-except
+                        _LOGGER.error(
+                            "Couldn't disconnect",
+                            address,
+                            err,
+                        )
+
+                if error is None:
+                    return client
+
+                last_error = error
+
+            if attempt < max_update_retries:
+                elapsed = time.monotonic() - started
+                # Each attempt already retries internally (bleak-retry-connector),
+                # so stop before another one would likely run into the next poll.
+                if elapsed + elapsed / attempt >= scan_interval:
+                    _LOGGER.debug(
+                        "Not retrying %s, attempt %s/%s took %.1fs so far: %s",
+                        address,
+                        attempt,
+                        max_update_retries,
+                        elapsed,
+                        last_error,
+                    )
+                    break
+                _LOGGER.debug(
+                    "Attempt %s/%s for %s failed, retrying: %s",
+                    attempt,
+                    max_update_retries,
+                    address,
+                    last_error,
+                )
+                await asyncio.sleep(UPDATE_RETRY_DELAY * attempt)
+
+        if last_error is not None:
+            raise last_error
+
+        raise UpdateFailed(f"Unable to fetch data from {address}")
 
     entry_data[CONF_SCAN_INTERVAL] = entry.options.get(
         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
