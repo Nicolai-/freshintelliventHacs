@@ -19,8 +19,10 @@ from .const import (
     BOOST_SETTINGS,
     BOOST_UPDATE,
     CONF_AUTH_KEY,
+    CONF_CACHE_DEVICE_INFO,
     CONF_MAX_UPDATE_RETRIES,
     CONSTANT_SPEED_UPDATE,
+    DEFAULT_CACHE_DEVICE_INFO,
     DEFAULT_MAX_UPDATE_RETRIES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -60,6 +62,18 @@ READ_ONLY_PLATFORMS = [
 
 _LOGGER = logging.getLogger(__name__)
 
+DEVICE_INFO_LOADED = "device_info_loaded"
+LAST_SUCCESSFUL_CLIENT = "last_successful_client"
+
+
+def _copy_device_information(source: FreshIntelliVent, target: FreshIntelliVent) -> None:
+    """Reuse cached device information without extra GATT reads."""
+    target.name = source.name
+    target.manufacturer = source.manufacturer
+    target.fw_version = source.fw_version
+    target.hw_version = source.hw_version
+    target.sw_version = source.sw_version
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry
@@ -85,6 +99,9 @@ async def async_setup_entry(
         )
 
     auth_key = entry.data.get(CONF_AUTH_KEY)
+    cache_device_info = entry.options.get(
+        CONF_CACHE_DEVICE_INFO, DEFAULT_CACHE_DEVICE_INFO
+    )
     max_update_retries = max(
         1, int(entry.options.get(CONF_MAX_UPDATE_RETRIES, DEFAULT_MAX_UPDATE_RETRIES))
     )
@@ -116,7 +133,18 @@ async def async_setup_entry(
                     if auth_key is not None:
                         await client.authenticate(authentication_code=auth_key)
                     await client.fetch_sensor_data()
-                    await client.fetch_device_information()
+
+                    cached_client = entry_data.get(LAST_SUCCESSFUL_CLIENT)
+                    if (
+                        cache_device_info
+                        and entry_data.get(DEVICE_INFO_LOADED)
+                        and cached_client is not None
+                    ):
+                        _copy_device_information(cached_client, client)
+                    else:
+                        await client.fetch_device_information()
+                        if cache_device_info:
+                            entry_data[DEVICE_INFO_LOADED] = True
 
                     updates = FetchAndUpdate(hass=hass, client=client)
                     await updates.update_all()
@@ -133,6 +161,7 @@ async def async_setup_entry(
                         )
 
                 if error is None:
+                    entry_data[LAST_SUCCESSFUL_CLIENT] = client
                     return client
 
                 last_error = error

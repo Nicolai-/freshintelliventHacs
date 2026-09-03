@@ -8,6 +8,7 @@ DISPATCH_DETECTION = f"{DOMAIN}.detection"
 
 DEFAULT_SCAN_INTERVAL = 120
 TIMEOUT = 30.0
+DEFAULT_CACHE_DEVICE_INFO = True
 DEFAULT_MAX_UPDATE_RETRIES = 2
 UPDATE_RETRY_DELAY = 1.0
 
@@ -18,6 +19,7 @@ AUTH_CODE_ONLY_ZERO = "auth_code_only_zero"
 AUTH_CODE_EMPTY = "auth_code_empty"
 
 CONF_AUTH_KEY = "auth_key"
+CONF_CACHE_DEVICE_INFO = "cache_device_info"
 CONF_MAX_UPDATE_RETRIES = "max_update_retries"
 CONF_SCAN_INTERVAL = "scan_interval"
 

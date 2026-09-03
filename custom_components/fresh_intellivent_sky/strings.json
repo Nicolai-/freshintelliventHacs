@@ -49,7 +49,8 @@
         "description": "Options for fan",
         "data": {
           "scan_interval" : "Interval colleting status from fan (seconds)",
-          "max_update_retries" : "Poll attempts per refresh"
+          "max_update_retries" : "Poll attempts per refresh",
+          "cache_device_info" : "Cache static device information"
         }
       }
     }

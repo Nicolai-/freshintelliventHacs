@@ -22,8 +22,10 @@ from voluptuous.validators import All, Range
 
 from .const import (
     CONF_AUTH_KEY,
+    CONF_CACHE_DEVICE_INFO,
     CONF_MAX_UPDATE_RETRIES,
     CONF_SCAN_INTERVAL,
+    DEFAULT_CACHE_DEVICE_INFO,
     DEFAULT_MAX_UPDATE_RETRIES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -314,6 +316,13 @@ class FreshIntelliventSkyOptionsFlowHandler(OptionsFlow):  # type: ignore[misc]
                     DEFAULT_MAX_UPDATE_RETRIES,
                 ),
             ): All(int, Range(min=1, max=10)),
+            vol.Optional(
+                CONF_CACHE_DEVICE_INFO,
+                default=self._config_entry.options.get(
+                    CONF_CACHE_DEVICE_INFO,
+                    DEFAULT_CACHE_DEVICE_INFO,
+                ),
+            ): bool,
         }
 
         return cast(
