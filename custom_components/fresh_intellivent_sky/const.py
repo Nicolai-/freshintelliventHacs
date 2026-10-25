@@ -12,6 +12,11 @@ DEFAULT_CACHE_DEVICE_INFO = True
 DEFAULT_MAX_UPDATE_RETRIES = 2
 # Failed reads come in short spells, so a retry right away rarely helps.
 UPDATE_RETRY_DELAY = 5.0
+# The fan often rejects the first read after the auth write with GATT
+# "Unlikely Error", so give it a moment and retry that read in place.
+AUTH_SETTLE_DELAY = 1.0
+SENSOR_READ_ATTEMPTS = 3
+SENSOR_READ_RETRY_DELAY = 1.0
 
 AUTH_MANUAL = "auth_manual"
 AUTH_FETCH = "auth_fetch"
