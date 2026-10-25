@@ -28,6 +28,7 @@ from .const import (
     DOMAIN,
     HUMIDITY_MODE_UPDATE,
     LIGHT_AND_VOC_MODE_UPDATE,
+    PAUSE_UPDATE,
     TIMEOUT,
     TIMER_MODE_UPDATE,
     UPDATE_RETRY_DELAY,
@@ -42,6 +43,17 @@ class UnableToConnect(HomeAssistantError):
 ALL_UPDATES = [
     BOOST_UPDATE,
     BOOST_SETTINGS,
+    CONSTANT_SPEED_UPDATE,
+    AIRING_MODE_UPDATE,
+    HUMIDITY_MODE_UPDATE,
+    LIGHT_AND_VOC_MODE_UPDATE,
+    TIMER_MODE_UPDATE,
+]
+
+# Settings the entities queue in hass.data for the next poll to write.
+PENDING_WRITES = [
+    BOOST_UPDATE,
+    PAUSE_UPDATE,
     CONSTANT_SPEED_UPDATE,
     AIRING_MODE_UPDATE,
     HUMIDITY_MODE_UPDATE,
@@ -133,11 +145,15 @@ async def async_setup_entry(
                 try:
                     await client.connect(timeout=TIMEOUT)
                     step = "sensor data"
-                    # Read the status before authenticating: right after the
-                    # auth write the fan kept rejecting this read with GATT
-                    # "Unlikely Error" and then dropped the connection.
                     await client.fetch_sensor_data()
-                    if auth_key is not None:
+                    # The fan often rejects the auth write, or the read right
+                    # after it, with GATT "Unlikely Error" and then drops the
+                    # connection, so only authenticate when there is a setting
+                    # to write.
+                    if auth_key is not None and any(
+                        hass.data.get(key) is not None for key in PENDING_WRITES
+                    ):
+                        _LOGGER.debug("Authenticating %s for pending writes", address)
                         step = "authenticate"
                         await client.authenticate(authentication_code=auth_key)
                         # The status was read before authenticating, so it
