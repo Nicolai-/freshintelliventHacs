@@ -35,14 +35,22 @@ class FetchAndUpdate:
 
         self._is_authenticated = client.sensors.authenticated
 
+        # Name of the step in progress, so a failed poll can say which
+        # characteristic the fan refused.
+        self.step: str | None = None
+
     async def update_all(self):
-        await self._fetch_and_update_boost()
-        await self._update_pause()
-        await self._fetch_and_update_airing()
-        await self._fetch_and_update_constant_speed()
-        await self._fetch_and_update_humidity()
-        await self._fetch_and_update_light_and_voc()
-        await self._fetch_and_update_timer()
+        for step, update in (
+            ("boost", self._fetch_and_update_boost),
+            ("pause", self._update_pause),
+            ("airing", self._fetch_and_update_airing),
+            ("constant speed", self._fetch_and_update_constant_speed),
+            ("humidity", self._fetch_and_update_humidity),
+            ("light and voc", self._fetch_and_update_light_and_voc),
+            ("timer", self._fetch_and_update_timer),
+        ):
+            self.step = step
+            await update()
 
     async def _fetch_and_update_boost(self):
         boost = self._hass.data.get(BOOST_UPDATE)

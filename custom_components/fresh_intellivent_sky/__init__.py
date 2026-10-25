@@ -127,11 +127,15 @@ async def async_setup_entry(
             else:
                 client = FreshIntelliVent(ble_device=ble_device)
                 error = None
+                step = "connect"
+                updates: FetchAndUpdate | None = None
 
                 try:
                     await client.connect(timeout=TIMEOUT)
                     if auth_key is not None:
+                        step = "authenticate"
                         await client.authenticate(authentication_code=auth_key)
+                    step = "sensor data"
                     await client.fetch_sensor_data()
 
                     cached_client = entry_data.get(LAST_SUCCESSFUL_CLIENT)
@@ -142,6 +146,7 @@ async def async_setup_entry(
                     ):
                         _copy_device_information(cached_client, client)
                     else:
+                        step = "device information"
                         await client.fetch_device_information()
                         if cache_device_info:
                             entry_data[DEVICE_INFO_LOADED] = True
@@ -149,7 +154,20 @@ async def async_setup_entry(
                     updates = FetchAndUpdate(hass=hass, client=client)
                     await updates.update_all()
                 except Exception as err:  # pylint: disable=broad-except
-                    error = UpdateFailed(f"Unable to fetch data: {err}")
+                    if updates is not None and updates.step is not None:
+                        step = updates.step
+                    # pyfreshintellivent wraps the BleakError, so the cause holds
+                    # the actual reason the read failed.
+                    _LOGGER.debug(
+                        "Attempt %s/%s for %s failed during %s: %r (cause: %r)",
+                        attempt,
+                        max_update_retries,
+                        address,
+                        step,
+                        err,
+                        err.__cause__,
+                    )
+                    error = UpdateFailed(f"Unable to fetch data ({step}): {err}")
                 finally:
                     try:
                         await client.disconnect()
@@ -164,9 +182,10 @@ async def async_setup_entry(
 
             if attempt < max_update_retries:
                 elapsed = time.monotonic() - started
+                delay = UPDATE_RETRY_DELAY * attempt
                 # Each attempt already retries internally (bleak-retry-connector),
                 # so stop before another one would likely run into the next poll.
-                if elapsed + elapsed / attempt >= scan_interval:
+                if elapsed + delay + elapsed / attempt >= scan_interval:
                     _LOGGER.debug(
                         "Not retrying %s, attempt %s/%s took %.1fs so far: %s",
                         address,
@@ -183,7 +202,7 @@ async def async_setup_entry(
                     address,
                     last_error,
                 )
-                await asyncio.sleep(UPDATE_RETRY_DELAY * attempt)
+                await asyncio.sleep(delay)
 
         if last_error is not None:
             raise last_error

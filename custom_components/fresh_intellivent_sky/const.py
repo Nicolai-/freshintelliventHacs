@@ -10,7 +10,8 @@ DEFAULT_SCAN_INTERVAL = 120
 TIMEOUT = 30.0
 DEFAULT_CACHE_DEVICE_INFO = True
 DEFAULT_MAX_UPDATE_RETRIES = 2
-UPDATE_RETRY_DELAY = 1.0
+# Failed reads come in short spells, so a retry right away rarely helps.
+UPDATE_RETRY_DELAY = 5.0
 
 AUTH_MANUAL = "auth_manual"
 AUTH_FETCH = "auth_fetch"
