@@ -16,7 +16,6 @@ from pyfreshintellivent import FreshIntelliVent
 
 from .const import (
     AIRING_MODE_UPDATE,
-    AUTH_SETTLE_DELAY,
     BOOST_SETTINGS,
     BOOST_UPDATE,
     CONF_AUTH_KEY,
@@ -29,8 +28,6 @@ from .const import (
     DOMAIN,
     HUMIDITY_MODE_UPDATE,
     LIGHT_AND_VOC_MODE_UPDATE,
-    SENSOR_READ_ATTEMPTS,
-    SENSOR_READ_RETRY_DELAY,
     TIMEOUT,
     TIMER_MODE_UPDATE,
     UPDATE_RETRY_DELAY,
@@ -76,27 +73,6 @@ def _copy_device_information(source: FreshIntelliVent, target: FreshIntelliVent)
     target.fw_version = source.fw_version
     target.hw_version = source.hw_version
     target.sw_version = source.sw_version
-
-
-async def _fetch_sensor_data(client: FreshIntelliVent, address: str) -> None:
-    """Read the device status, retrying on the same connection."""
-    for read in range(1, SENSOR_READ_ATTEMPTS + 1):
-        try:
-            await client.fetch_sensor_data()
-            return
-        except Exception as err:  # pylint: disable=broad-except
-            if read == SENSOR_READ_ATTEMPTS:
-                raise
-            _LOGGER.debug(
-                "Sensor data read %s/%s for %s failed, retrying on the same "
-                "connection: %r (cause: %r)",
-                read,
-                SENSOR_READ_ATTEMPTS,
-                address,
-                err,
-                err.__cause__,
-            )
-            await asyncio.sleep(SENSOR_READ_RETRY_DELAY)
 
 
 async def async_setup_entry(
@@ -156,12 +132,17 @@ async def async_setup_entry(
 
                 try:
                     await client.connect(timeout=TIMEOUT)
+                    step = "sensor data"
+                    # Read the status before authenticating: right after the
+                    # auth write the fan kept rejecting this read with GATT
+                    # "Unlikely Error" and then dropped the connection.
+                    await client.fetch_sensor_data()
                     if auth_key is not None:
                         step = "authenticate"
                         await client.authenticate(authentication_code=auth_key)
-                        await asyncio.sleep(AUTH_SETTLE_DELAY)
-                    step = "sensor data"
-                    await _fetch_sensor_data(client, address)
+                        # The status was read before authenticating, so it
+                        # still reports this connection as unauthenticated.
+                        client.sensors.authenticated = True
 
                     cached_client = entry_data.get(LAST_SUCCESSFUL_CLIENT)
                     if (
